@@ -16,79 +16,110 @@ import (
 
 type PasswordHasher struct {
 	uniqueId int64
-	hashes   map[int64]string
-
-	stats chan time.Duration
-	times []time.Duration
-	stop  bool
-	done  chan bool
-
-	hashLock  sync.RWMutex
-	statsLock sync.RWMutex
-	wg        sync.WaitGroup
 }
 
 func NewPasswordHasher() *PasswordHasher {
-	return &PasswordHasher{
-		uniqueId:  0,
-		hashes:    make(map[int64]string),
-		stats:     make(chan time.Duration, 1),
-		times:     make([]time.Duration, 0),
-		stop:      false,
-		done:      make(chan bool, 1),
-		hashLock:  sync.RWMutex{},
-		statsLock: sync.RWMutex{},
-		wg:        sync.WaitGroup{},
+	return &PasswordHasher{}
+}
+
+func (pwHasher *PasswordHasher) hashPassword(password string) (string, int64) {
+	id := atomic.AddInt64(&pwHasher.uniqueId, 1)
+	hashed := sha512.Sum512([]byte(password))
+	encoded := base64.StdEncoding.EncodeToString(hashed[:])
+	return encoded, id
+}
+
+type PasswordStore struct {
+	hashes   map[int64]string
+	hashLock sync.RWMutex
+	wg       sync.WaitGroup
+}
+
+func NewPasswordStore() *PasswordStore {
+	return &PasswordStore{
+		hashes: make(map[int64]string),
 	}
 }
 
-func (pwHasher *PasswordHasher) hashPassword(password string, id int64) {
-	log.Printf("Hashing for %d", id)
-	pwHasher.wg.Add(1)
+func (store *PasswordStore) storePassword(hashed string, id int64) {
+	log.Printf("Storing for %d ...", id)
+	store.wg.Add(1)
 	time.Sleep(5 * time.Second)
-	hashed := sha512.Sum512([]byte(password))
-	encoded := base64.StdEncoding.EncodeToString(hashed[:])
-	defer pwHasher.hashLock.Unlock()
-	pwHasher.hashLock.Lock()
-	pwHasher.hashes[id] = encoded
-	pwHasher.wg.Done()
-	log.Printf("%d hashed", id)
+	defer store.hashLock.Unlock()
+	store.hashLock.Lock()
+	store.hashes[id] = hashed
+	store.wg.Done()
+	log.Printf("%d stored", id)
 }
 
-func (pwHasher *PasswordHasher) getPassword(id int64) string {
+func (store *PasswordStore) retrievePassword(id int64) string {
 	log.Printf("Getting for %d", id)
-	defer pwHasher.hashLock.RUnlock()
-	pwHasher.hashLock.RLock()
-	if password, ok := pwHasher.hashes[id]; ok {
+	defer store.hashLock.RUnlock()
+	store.hashLock.RLock()
+	if password, ok := store.hashes[id]; ok {
 		return password
 	}
 	return ""
 }
 
-type Stats struct {
-	Total   int64 `json:"total"`
-	Average int64 `json:"average"`
+func (store *PasswordStore) waitPendingStores() {
+	store.wg.Wait()
+	log.Print("No more pending stores")
 }
 
-func (pwHasher *PasswordHasher) generateStats() Stats {
-	defer pwHasher.statsLock.RUnlock()
-	pwHasher.statsLock.RLock()
-	if len(pwHasher.times) == 0 {
-		return Stats{}
-	}
-	var msSum int64
-	for _, ts := range pwHasher.times {
-		msSum += ts.Microseconds()
-	}
-	return Stats{
-		Total:   pwHasher.uniqueId,
-		Average: msSum / int64(len(pwHasher.times)),
+type PasswordHasherStats struct {
+	queue chan int64
+	times []int64
+	lock  sync.RWMutex
+}
+
+func NewPasswordHasherStats() *PasswordHasherStats {
+	return &PasswordHasherStats{
+		queue: make(chan int64, 1),
+		times: make([]int64, 0),
 	}
 }
 
-func (pwHasher *PasswordHasher) hash(w http.ResponseWriter, req *http.Request) {
+func (phStats *PasswordHasherStats) addTiming(elapsed time.Duration) {
+	phStats.queue <- elapsed.Microseconds()
+}
+
+func (phStats *PasswordHasherStats) generateStats() (total int64, avg int64) {
+	defer phStats.lock.RUnlock()
+	phStats.lock.RLock()
+	if len(phStats.times) == 0 {
+		return
+	}
+	var accumulated int64
+	for _, microseconds := range phStats.times {
+		accumulated += microseconds
+	}
+	total = int64(len(phStats.times))
+	return total, accumulated / total
+}
+
+func (phStats *PasswordHasherStats) collectStats() {
+	log.Print("Collecting stats...")
+	ok := true
+	for ok {
+		var microseconds int64
+		if microseconds, ok = <-phStats.queue; ok {
+			log.Printf("Stats: %d", microseconds)
+			phStats.lock.Lock()
+			phStats.times = append(phStats.times, microseconds)
+			phStats.lock.Unlock()
+		}
+	}
+	log.Print("Done collecting stats")
+}
+
+func (phStats *PasswordHasherStats) stopCollecting() {
+	close(phStats.queue)
+}
+
+func (server *PasswordHasherServer) hash(w http.ResponseWriter, req *http.Request) {
 	startTime := time.Now()
-	if pwHasher.stop {
+	if server.stopping {
 		stopErrorResponse(w)
 		return
 	}
@@ -102,17 +133,18 @@ func (pwHasher *PasswordHasher) hash(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	id := atomic.AddInt64(&pwHasher.uniqueId, 1)
+
 	password := req.FormValue("password")
-	go pwHasher.hashPassword(password, id)
+	hashed, id := server.pwHasher.hashPassword(password)
+	go server.pwStore.storePassword(hashed, id)
 	_, errW := fmt.Fprintf(w, "%d", id)
 	logWriteError(errW)
 	finishTime := time.Now()
-	pwHasher.stats <- finishTime.Sub(startTime)
+	server.phStats.addTiming(finishTime.Sub(startTime))
 }
 
-func (pwHasher *PasswordHasher) getHash(w http.ResponseWriter, req *http.Request) {
-	if pwHasher.stop {
+func (server *PasswordHasherServer) getHash(w http.ResponseWriter, req *http.Request) {
+	if server.stopping {
 		stopErrorResponse(w)
 		return
 	}
@@ -128,7 +160,7 @@ func (pwHasher *PasswordHasher) getHash(w http.ResponseWriter, req *http.Request
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	password := pwHasher.getPassword(id)
+	password := server.pwStore.retrievePassword(id)
 	if password == "" {
 		_, errW := fmt.Fprintf(w, "")
 		logWriteError(errW)
@@ -138,8 +170,18 @@ func (pwHasher *PasswordHasher) getHash(w http.ResponseWriter, req *http.Request
 	logWriteError(errW)
 }
 
-func (pwHasher *PasswordHasher) getStats(w http.ResponseWriter, req *http.Request) {
-	if pwHasher.stop {
+func statsToJson(total, avg int64) ([]byte, error) {
+	type Stats struct {
+		Total   int64 `json:"total"`
+		Average int64 `json:"average"`
+	}
+	return json.Marshal(&Stats{
+		total, avg,
+	})
+}
+
+func (server *PasswordHasherServer) getStats(w http.ResponseWriter, req *http.Request) {
+	if server.stopping {
 		stopErrorResponse(w)
 		return
 	}
@@ -148,8 +190,8 @@ func (pwHasher *PasswordHasher) getStats(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	stats := pwHasher.generateStats()
-	if data, err := json.Marshal(&stats); err != nil {
+	total, avg := server.phStats.generateStats()
+	if data, err := statsToJson(total, avg); err != nil {
 		_, errW := fmt.Fprintf(w, "Error")
 		logWriteError(errW)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -160,8 +202,8 @@ func (pwHasher *PasswordHasher) getStats(w http.ResponseWriter, req *http.Reques
 	}
 }
 
-func (pwHasher *PasswordHasher) shutdown(w http.ResponseWriter, req *http.Request) {
-	if pwHasher.stop {
+func (server *PasswordHasherServer) shutdown(w http.ResponseWriter, req *http.Request) {
+	if server.stopping {
 		stopErrorResponse(w)
 		return
 	}
@@ -169,7 +211,7 @@ func (pwHasher *PasswordHasher) shutdown(w http.ResponseWriter, req *http.Reques
 		methodErrorResponse(w)
 		return
 	}
-	pwHasher.done <- true
+	server.done <- true
 }
 
 func logWriteError(errW error) {
@@ -190,54 +232,65 @@ func stopErrorResponse(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusServiceUnavailable)
 }
 
-func (pwHasher *PasswordHasher) collectStats() {
-	log.Print("Collecting stats...")
-	pwHasher.wg.Add(1)
-	ok := true
-	for ok {
-		var ts time.Duration
-		if ts, ok = <-pwHasher.stats; ok {
-			log.Printf("Stats: %d", ts.Microseconds())
-			pwHasher.statsLock.Lock()
-			pwHasher.times = append(pwHasher.times, ts)
-			pwHasher.statsLock.Unlock()
-		}
-	}
-	pwHasher.wg.Done()
-	log.Print("No more stats")
+type PasswordHasherServer struct {
+	http     *http.Server
+	stopping bool
+	done     chan bool
+	pwHasher *PasswordHasher
+	pwStore  *PasswordStore
+	phStats  *PasswordHasherStats
 }
 
-func (pwHasher *PasswordHasher) startServer(server *http.Server) {
+func (pwHasher *PasswordHasher) newServer() *PasswordHasherServer {
 	mux := http.NewServeMux()
-	server = &http.Server{Addr: ":8090", Handler: mux}
-	mux.HandleFunc("/shutdown", pwHasher.shutdown)
-	mux.HandleFunc("/stats", pwHasher.getStats)
-	mux.HandleFunc("/hash", pwHasher.hash)
-	mux.HandleFunc("/hash/", pwHasher.getHash)
+	server := &PasswordHasherServer{
+		http:     &http.Server{Addr: ":8090", Handler: mux},
+		stopping: false,
+		done:     make(chan bool, 1),
+		pwHasher: pwHasher,
+		pwStore:  NewPasswordStore(),
+		phStats:  NewPasswordHasherStats(),
+	}
+	mux.HandleFunc("/shutdown", server.shutdown)
+	mux.HandleFunc("/stats", server.getStats)
+	mux.HandleFunc("/hash", server.hash)
+	mux.HandleFunc("/hash/", server.getHash)
+	return server
+}
 
+func (server *PasswordHasherServer) start() {
 	log.Print("Start server...")
-	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+	go server.phStats.collectStats()
+	if err := server.http.ListenAndServe(); err != http.ErrServerClosed {
 		panic(err)
 	}
 }
 
-func (pwHasher *PasswordHasher) stopServer(server *http.Server, ctx context.Context) {
+type StoppedFunc func()
+
+func (server *PasswordHasherServer) stop() StoppedFunc {
+	server.phStats.stopCollecting()
 	log.Print("Stopping server...")
-	if err := server.Shutdown(ctx); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := server.http.Shutdown(ctx); err != nil {
 		panic(err)
 	}
 	log.Print("Done")
+	return func() {
+		server.pwStore.waitPendingStores()
+		log.Print("Server Stopped")
+		cancel()
+	}
+}
+
+func (server *PasswordHasherServer) waitShutdown() {
+	server.stopping = <-server.done
 }
 
 func (pwHasher *PasswordHasher) Run() {
-	var server http.Server
-	go pwHasher.startServer(&server)
-	go pwHasher.collectStats()
-	pwHasher.stop = <-pwHasher.done
-	close(pwHasher.stats)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	pwHasher.stopServer(&server, ctx)
-	pwHasher.wg.Wait()
-	log.Print("Server Stopped")
+	server := pwHasher.newServer()
+	go server.start()
+	server.waitShutdown()
+	stopped := server.stop()
+	defer stopped()
 }
