@@ -89,118 +89,105 @@ func (pwHasher *PasswordHasher) generateStats() Stats {
 func (pwHasher *PasswordHasher) hash(w http.ResponseWriter, req *http.Request) {
 	startTime := time.Now()
 	if pwHasher.stop {
-		if _, errW := fmt.Fprintf(w, "Shutting Down"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
+		stopErrorResponse(w)
 		return
 	}
 	if req.Method != "POST" {
-		if _, errW := fmt.Fprintf(w, "Not Supported"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		methodErrorResponse(w)
 		return
 	}
 	if err := req.ParseForm(); err != nil {
-		if _, errW := fmt.Fprintf(w, "Bad Form"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
+		_, errW := fmt.Fprintf(w, "Bad Form")
+		logWriteError(errW)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	id := atomic.AddInt64(&pwHasher.uniqueId, 1)
 	password := req.FormValue("password")
 	go pwHasher.hashPassword(password, id)
-	if _, errW := fmt.Fprintf(w, "%d", id); errW != nil {
-		log.Printf("ERROR: %v", errW)
-	}
+	_, errW := fmt.Fprintf(w, "%d", id)
+	logWriteError(errW)
 	finishTime := time.Now()
 	pwHasher.stats <- finishTime.Sub(startTime)
 }
 
 func (pwHasher *PasswordHasher) getHash(w http.ResponseWriter, req *http.Request) {
 	if pwHasher.stop {
-		if _, errW := fmt.Fprintf(w, "Shutting Down"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
+		stopErrorResponse(w)
 		return
 	}
 	if req.Method != "GET" {
-		if _, errW := fmt.Fprintf(w, "Not Supported"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		methodErrorResponse(w)
 		return
 	}
 	value := req.URL.Path[len("/hash/"):]
 	id, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		if _, errW := fmt.Fprintf(w, "Invalid ID"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
+		_, errW := fmt.Fprintf(w, "Invalid ID")
+		logWriteError(errW)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	password := pwHasher.getPassword(id)
 	if password == "" {
-		if _, errW := fmt.Fprintf(w, ""); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
+		_, errW := fmt.Fprintf(w, "")
+		logWriteError(errW)
 		return
 	}
-	if _, errW := fmt.Fprintf(w, "%s", password); errW != nil {
-		log.Printf("ERROR: %v", errW)
-	}
+	_, errW := fmt.Fprintf(w, "%s", password)
+	logWriteError(errW)
 }
 
 func (pwHasher *PasswordHasher) getStats(w http.ResponseWriter, req *http.Request) {
 	if pwHasher.stop {
-		if _, errW := fmt.Fprintf(w, "Shutting Down"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
+		stopErrorResponse(w)
 		return
 	}
 	if req.Method != "GET" {
-		if _, errW := fmt.Fprintf(w, "Not Supported"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		methodErrorResponse(w)
 		return
 	}
 
 	stats := pwHasher.generateStats()
 	if data, err := json.Marshal(&stats); err != nil {
-		if _, errW := fmt.Fprintf(w, "Error"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
+		_, errW := fmt.Fprintf(w, "Error")
+		logWriteError(errW)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	} else {
-		if _, errW := w.Write(data); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
+		_, errW := w.Write(data)
+		logWriteError(errW)
 	}
 }
 
 func (pwHasher *PasswordHasher) shutdown(w http.ResponseWriter, req *http.Request) {
 	if pwHasher.stop {
-		if _, errW := fmt.Fprintf(w, "Shutting Down"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
+		stopErrorResponse(w)
 		return
 	}
 	if req.Method != "GET" {
-		if _, errW := fmt.Fprintf(w, "Not Supported"); errW != nil {
-			log.Printf("ERROR: %v", errW)
-		}
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		methodErrorResponse(w)
 		return
 	}
 	pwHasher.done <- true
+}
+
+func logWriteError(errW error) {
+	if errW != nil {
+		log.Printf("ERROR: %v", errW)
+	}
+}
+
+func methodErrorResponse(w http.ResponseWriter) {
+	_, errW := fmt.Fprintf(w, "Not Supported")
+	logWriteError(errW)
+	w.WriteHeader(http.StatusMethodNotAllowed)
+}
+
+func stopErrorResponse(w http.ResponseWriter) {
+	_, errW := fmt.Fprintf(w, "Shutting Down")
+	logWriteError(errW)
+	w.WriteHeader(http.StatusServiceUnavailable)
 }
 
 func (pwHasher *PasswordHasher) collectStats() {
