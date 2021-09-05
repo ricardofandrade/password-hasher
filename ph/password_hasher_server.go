@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 )
@@ -24,8 +23,7 @@ type PasswordHasherServer struct {
 }
 
 // NewPasswordHasherServer creates a new hasher server ready to use.
-func NewPasswordHasherServer() *PasswordHasherServer {
-	logger := log.New(os.Stderr, "", log.LstdFlags)
+func NewPasswordHasherServer(logger *log.Logger) *PasswordHasherServer {
 	mux := http.NewServeMux()
 	server := &PasswordHasherServer{
 		http: &http.Server{

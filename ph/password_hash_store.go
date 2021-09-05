@@ -42,9 +42,7 @@ func (store *passwordHashStore) delayStore(hashed string, id int64) {
 
 	// mark storage as pending and impose delay
 	store.pending.Add(1)
-	log.Printf("Waiting %d", store.delay)
 	time.Sleep(store.delay)
-	log.Print("done")
 
 	// block for concurrent writes
 	defer store.lock.Unlock()

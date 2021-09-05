@@ -11,7 +11,7 @@ import (
 )
 
 func Test_NewPasswordHasherServer(t *testing.T) {
-	server := NewPasswordHasherServer()
+	server := NewPasswordHasherServer(nil)
 	if server.pwHasher == nil {
 		t.Error("Expected hasher to not be nil")
 	}
@@ -210,7 +210,7 @@ func Test_getStats(t *testing.T) {
 }
 
 func Test_shutdownServer(t *testing.T) {
-	server := NewPasswordHasherServer()
+	server := NewPasswordHasherServer(nil)
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(http.MethodGet, "", nil)
 	if err != nil {
@@ -228,7 +228,7 @@ func Test_shutdownServer(t *testing.T) {
 }
 
 func Test_NewPasswordHasherServerHandler(t *testing.T) {
-	server := NewPasswordHasherServer()
+	server := NewPasswordHasherServer(nil)
 	server.pwHasher = &MockHasher{
 		expected: "test",
 		t:        t,
@@ -306,10 +306,15 @@ func Test_Run(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := log.New(buf, "", 0)
 
-	server := NewPasswordHasherServer()
-	server.logger = logger
+	server := NewPasswordHasherServer(logger)
 	go server.Run()
+	time.Sleep(time.Second)
 	server.shutdown()
+	time.Sleep(time.Second)
+
+	if buf.String() != "Start server...\nCollecting stats...\nStopping server...\nDone collecting stats\nDone\nNo more pending stores\nServer Stopped\n" {
+		t.Errorf("Unexpected log: %s", buf.String())
+	}
 }
 
 type MockHasher struct {

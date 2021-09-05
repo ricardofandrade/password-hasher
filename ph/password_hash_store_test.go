@@ -3,6 +3,7 @@ package ph
 import (
 	"bytes"
 	"log"
+	"strings"
 	"testing"
 	"time"
 )
@@ -70,10 +71,10 @@ func Test_storePassword(t *testing.T) {
 	buf := &bytes.Buffer{}
 	store := newPasswordHashStore(log.New(buf, "", 0), delay)
 	store.storePassword("test", 0)
-	forceGoroutineScheduler()
 	if store.retrievePassword(0) != "" {
 		t.Error("Expected to have no hashes before the delay")
 	}
+	forceGoroutineScheduler()
 	buf.Reset()
 
 	store.waitPendingStores()
@@ -81,7 +82,7 @@ func Test_storePassword(t *testing.T) {
 		t.Error("Expected to have correct hash before the delay")
 	}
 
-	if buf.String() != "0 stored\nNo more pending stores\nGetting for 0\n" {
+	if !strings.HasSuffix(buf.String(), "No more pending stores\nGetting for 0\n") {
 		t.Errorf("Expected log indicating no more pending: %s", buf.String())
 	}
 }
