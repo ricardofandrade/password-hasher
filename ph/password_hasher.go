@@ -17,7 +17,7 @@ type sha512PasswordHasher struct {
 }
 
 // newSHA512PasswordHasher creates a new hasher.
-func newSHA512PasswordHasher() passwordHasher {
+func newSHA512PasswordHasher() *sha512PasswordHasher {
 	return &sha512PasswordHasher{}
 }
 

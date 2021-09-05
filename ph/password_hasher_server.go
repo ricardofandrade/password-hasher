@@ -35,7 +35,7 @@ func NewPasswordHasherServer() *PasswordHasherServer {
 		phStore:  newPasswordHashStore(),
 		phStats:  newPasswordHasherStats(),
 	}
-	mux.HandleFunc("/shutdown", server.shutdown)
+	mux.HandleFunc("/shutdown", server.shutdownServer)
 	mux.HandleFunc("/stats", server.getStats)
 	mux.HandleFunc("/hash", server.hash)
 	mux.HandleFunc("/hash/", server.getHash)
@@ -76,6 +76,11 @@ func (server *PasswordHasherServer) stop() StoppedFunc {
 		log.Print("Server Stopped")
 		cancel()
 	}
+}
+
+// shutdown signals the server to shut itself down gracefully.
+func (server *PasswordHasherServer) shutdown() {
+	server.done <- true
 }
 
 // waitShutdown blocks until the respective signal is received.
@@ -168,7 +173,7 @@ func (server *PasswordHasherServer) getStats(w http.ResponseWriter, req *http.Re
 // shutdown initiates the server graceful shutdown, after this all endpoints will stop to respond.
 // The process may take up to 5 seconds to complete due to pending hash operations.
 // FIXME: Anyone reaching this service can shut it down. Don't we want to protect this a bit more?
-func (server *PasswordHasherServer) shutdown(w http.ResponseWriter, req *http.Request) {
+func (server *PasswordHasherServer) shutdownServer(w http.ResponseWriter, req *http.Request) {
 	if server.stopping {
 		stopErrorResponse(w)
 		return
@@ -177,5 +182,5 @@ func (server *PasswordHasherServer) shutdown(w http.ResponseWriter, req *http.Re
 		methodErrorResponse(w)
 		return
 	}
-	server.done <- true
+	server.shutdown()
 }

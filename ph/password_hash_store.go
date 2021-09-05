@@ -26,7 +26,7 @@ type passwordHashStore struct {
 }
 
 // newPasswordHashStore creates a new store.
-func newPasswordHashStore() passwordHashStorer {
+func newPasswordHashStore() *passwordHashStore {
 	return &passwordHashStore{
 		hashes: make(map[int64]string),
 	}

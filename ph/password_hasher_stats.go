@@ -27,7 +27,7 @@ type passwordHasherStats struct {
 }
 
 // newPasswordHasherStats returns a new stats controller.
-func newPasswordHasherStats() passwordHasherStater {
+func newPasswordHasherStats() *passwordHasherStats {
 	return &passwordHasherStats{
 		queue: make(chan microseconds, 1),
 		times: make([]microseconds, 0),
