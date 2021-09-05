@@ -11,3 +11,14 @@ func TestGenerateStats3(t *testing.T) {
 		t.Errorf("Unexpect values for blank stats: %d total, avg %d", total, avg)
 	}
 }
+
+// func Test(t *testing.T) {}
+// func Test(t *testing.T) {}
+// func Test(t *testing.T) {}
+// func Test(t *testing.T) {}
+// func Test(t *testing.T) {}
+// func Test(t *testing.T) {}
+// func Test(t *testing.T) {}
+// func Test(t *testing.T) {}
+// func Test(t *testing.T) {}
+// func Test(t *testing.T) {}

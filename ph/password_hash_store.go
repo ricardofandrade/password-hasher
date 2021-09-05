@@ -6,14 +6,16 @@ import (
 	"time"
 )
 
+var hashDelay = 5 * time.Second
+
 // passwordHashStore is an in-memory delayed storage of hashed passwords.
 // FIXME: There's currently no strategy to rotate or purge the password hashes.
 //        Not only this is an issue due to the amount of memory used, but sequential IDs are easily guessable. The hash
 //        even though "secure" (no known issues with SHA-512), length extension and table matching are still possible.
 type passwordHashStore struct {
-	hashes   map[int64]string
-	hashLock sync.RWMutex
-	wg       sync.WaitGroup
+	hashes  map[int64]string
+	lock    sync.RWMutex
+	pending sync.WaitGroup
 }
 
 // newPasswordHashStore creates a new store.
@@ -25,19 +27,19 @@ func newPasswordHashStore() *passwordHashStore {
 
 // delayStore actually stores the password hash tied to its id after a 5-second delay.
 func (store *passwordHashStore) delayStore(hashed string, id int64) {
-	log.Printf("Storing for %d ...", id)
+	log.Printf("Storing for %d...", id)
 
 	// mark storage as pending and impose delay
-	store.wg.Add(1)
-	time.Sleep(5 * time.Second)
+	store.pending.Add(1)
+	time.Sleep(hashDelay)
 
 	// block for concurrent writes
-	defer store.hashLock.Unlock()
-	store.hashLock.Lock()
+	defer store.lock.Unlock()
+	store.lock.Lock()
 	store.hashes[id] = hashed
 
 	// mark storage as completed
-	store.wg.Done()
+	store.pending.Done()
 	log.Printf("%d stored", id)
 }
 
@@ -53,8 +55,8 @@ func (store *passwordHashStore) retrievePassword(id int64) string {
 	log.Printf("Getting for %d", id)
 
 	// blocks if storage is being writen to, but fast(er) for concurrent reads
-	defer store.hashLock.RUnlock()
-	store.hashLock.RLock()
+	defer store.lock.RUnlock()
+	store.lock.RLock()
 	if password, ok := store.hashes[id]; ok {
 		return password
 	}
@@ -64,6 +66,6 @@ func (store *passwordHashStore) retrievePassword(id int64) string {
 
 // waitPendingStores should be called from a consumer of this store to ensure no pending writes exist.
 func (store *passwordHashStore) waitPendingStores() {
-	store.wg.Wait()
+	store.pending.Wait()
 	log.Print("No more pending stores")
 }
