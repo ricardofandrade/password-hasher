@@ -82,7 +82,7 @@ func Test_storePassword(t *testing.T) {
 		t.Error("Expected to have correct hash before the delay")
 	}
 
-	if !strings.HasSuffix(buf.String(), "No more pending stores\nGetting for 0\n") {
+	if !strings.Contains(buf.String(), "No more pending stores\nGetting for 0\n") {
 		t.Errorf("Expected log indicating no more pending: %s", buf.String())
 	}
 }
