@@ -68,6 +68,11 @@ func (phStats *passwordHasherStats) accumulateStats() {
 	log.Print("Done collecting stats")
 }
 
+// startAccumulating begins to accumulate timings.
+func (phStats *passwordHasherStats) startAccumulating() {
+	go phStats.accumulateStats()
+}
+
 // stopAccumulating interrupts the accumulation of timings.
 func (phStats *passwordHasherStats) stopAccumulating() {
 	close(phStats.queue)

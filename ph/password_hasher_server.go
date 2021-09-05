@@ -53,7 +53,7 @@ func (server *PasswordHasherServer) Run() {
 // start will listen for incoming HTTP traffic, and accumulate any stats.
 func (server *PasswordHasherServer) start() {
 	log.Print("Start server...")
-	go server.phStats.accumulateStats()
+	server.phStats.startAccumulating()
 	if err := server.http.ListenAndServe(); err != http.ErrServerClosed {
 		panic(err)
 	}
