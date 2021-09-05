@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 )
@@ -19,10 +20,12 @@ type PasswordHasherServer struct {
 	pwHasher passwordHasher
 	phStore  passwordHashStorer
 	phStats  passwordHasherStater
+	logger   *log.Logger
 }
 
 // NewPasswordHasherServer creates a new hasher server ready to use.
 func NewPasswordHasherServer() *PasswordHasherServer {
+	logger := log.New(os.Stderr, "", log.LstdFlags)
 	mux := http.NewServeMux()
 	server := &PasswordHasherServer{
 		http: &http.Server{
@@ -32,8 +35,9 @@ func NewPasswordHasherServer() *PasswordHasherServer {
 		stopping: false,
 		done:     make(chan bool, 1),
 		pwHasher: newSHA512PasswordHasher(),
-		phStore:  newPasswordHashStore(),
-		phStats:  newPasswordHasherStats(),
+		phStore:  newPasswordHashStore(logger, hashDelay),
+		phStats:  newPasswordHasherStats(logger),
+		logger:   logger,
 	}
 	mux.HandleFunc("/shutdown", server.shutdownServer)
 	mux.HandleFunc("/stats", server.getStats)
@@ -52,7 +56,7 @@ func (server *PasswordHasherServer) Run() {
 
 // start will listen for incoming HTTP traffic, and accumulate any stats.
 func (server *PasswordHasherServer) start() {
-	log.Print("Start server...")
+	server.logger.Print("Start server...")
 	server.phStats.startAccumulating()
 	if err := server.http.ListenAndServe(); err != http.ErrServerClosed {
 		panic(err)
@@ -65,15 +69,15 @@ type StoppedFunc func()
 // stop will halt listening for HTTP traffic, cease accumulating stats, and wait until all password stores are completed.
 func (server *PasswordHasherServer) stop() StoppedFunc {
 	server.phStats.stopAccumulating()
-	log.Print("Stopping server...")
+	server.logger.Print("Stopping server...")
 	ctx, cancel := context.WithCancel(context.Background())
 	if err := server.http.Shutdown(ctx); err != nil {
 		panic(err)
 	}
-	log.Print("Done")
+	server.logger.Print("Done")
 	return func() {
 		server.phStore.waitPendingStores()
-		log.Print("Server Stopped")
+		server.logger.Print("Server Stopped")
 		cancel()
 	}
 }
@@ -93,17 +97,17 @@ func (server *PasswordHasherServer) waitShutdown() {
 func (server *PasswordHasherServer) hash(w http.ResponseWriter, req *http.Request) {
 	startTime := time.Now()
 	if server.stopping {
-		stopErrorResponse(w)
+		stopErrorResponse(server.logger, w)
 		return
 	}
 	if req.Method != "POST" {
-		methodErrorResponse(w)
+		methodErrorResponse(server.logger, w)
 		return
 	}
 	if err := req.ParseForm(); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, errW := fmt.Fprintf(w, "Bad Form")
-		logWriteError(errW)
+		logWriteError(server.logger, errW)
 		return
 	}
 	password := req.FormValue("password")
@@ -115,7 +119,7 @@ func (server *PasswordHasherServer) hash(w http.ResponseWriter, req *http.Reques
 	server.phStore.storePassword(hashed, id)
 
 	_, errW := fmt.Fprintf(w, "%d", id)
-	logWriteError(errW)
+	logWriteError(server.logger, errW)
 	finishTime := time.Now()
 	server.phStats.accumulateTiming(finishTime.Sub(startTime))
 }
@@ -123,11 +127,11 @@ func (server *PasswordHasherServer) hash(w http.ResponseWriter, req *http.Reques
 // getHash obtains the password hash for a given id in the URL path.
 func (server *PasswordHasherServer) getHash(w http.ResponseWriter, req *http.Request) {
 	if server.stopping {
-		stopErrorResponse(w)
+		stopErrorResponse(server.logger, w)
 		return
 	}
 	if req.Method != "GET" {
-		methodErrorResponse(w)
+		methodErrorResponse(server.logger, w)
 		return
 	}
 	value := req.URL.Path[len("/hash/"):]
@@ -135,38 +139,38 @@ func (server *PasswordHasherServer) getHash(w http.ResponseWriter, req *http.Req
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, errW := fmt.Fprintf(w, "Invalid ID")
-		logWriteError(errW)
+		logWriteError(server.logger, errW)
 		return
 	}
 	password := server.phStore.retrievePassword(id)
 	if password == "" {
 		_, errW := fmt.Fprintf(w, "")
-		logWriteError(errW)
+		logWriteError(server.logger, errW)
 		return
 	}
 	_, errW := fmt.Fprintf(w, "%s", password)
-	logWriteError(errW)
+	logWriteError(server.logger, errW)
 }
 
 // getStats returns the current server stats (`total` passwords and `average` hashing time) as JSON.
 func (server *PasswordHasherServer) getStats(w http.ResponseWriter, req *http.Request) {
 	if server.stopping {
-		stopErrorResponse(w)
+		stopErrorResponse(server.logger, w)
 		return
 	}
 	if req.Method != "GET" {
-		methodErrorResponse(w)
+		methodErrorResponse(server.logger, w)
 		return
 	}
 
 	total, avg := server.phStats.generateStats()
-	if data, ok := statsToJson(total, avg); ok {
+	if data, ok := statsToJson(server.logger, total, avg); ok {
 		_, errW := w.Write(data)
-		logWriteError(errW)
+		logWriteError(server.logger, errW)
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, errW := fmt.Fprintf(w, "Internal Error")
-		logWriteError(errW)
+		logWriteError(server.logger, errW)
 	}
 }
 
@@ -175,11 +179,11 @@ func (server *PasswordHasherServer) getStats(w http.ResponseWriter, req *http.Re
 // FIXME: Anyone reaching this service can shut it down. Don't we want to protect this a bit more?
 func (server *PasswordHasherServer) shutdownServer(w http.ResponseWriter, req *http.Request) {
 	if server.stopping {
-		stopErrorResponse(w)
+		stopErrorResponse(server.logger, w)
 		return
 	}
 	if req.Method != "GET" {
-		methodErrorResponse(w)
+		methodErrorResponse(server.logger, w)
 		return
 	}
 	server.shutdown()

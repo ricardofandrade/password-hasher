@@ -21,16 +21,18 @@ type microseconds int64
 // FIXME: There's currently no strategy to rotate or purge the accumulated timings.
 //        This accumulation is a risk and makes the service prone to Denial of Service due to exhausted memory.
 type passwordHasherStats struct {
-	queue chan microseconds
-	times []microseconds
-	lock  sync.RWMutex
+	queue  chan microseconds
+	times  []microseconds
+	lock   sync.RWMutex
+	logger *log.Logger
 }
 
 // newPasswordHasherStats returns a new stats controller.
-func newPasswordHasherStats() *passwordHasherStats {
+func newPasswordHasherStats(logger *log.Logger) *passwordHasherStats {
 	return &passwordHasherStats{
-		queue: make(chan microseconds, 1),
-		times: make([]microseconds, 0),
+		queue:  make(chan microseconds, 1),
+		times:  make([]microseconds, 0),
+		logger: logger,
 	}
 }
 
@@ -60,12 +62,12 @@ func (phStats *passwordHasherStats) generateStats() (total int64, avg int64) {
 
 // accumulateStats actually accumulate timings sent by accumulateTiming.
 func (phStats *passwordHasherStats) accumulateStats() {
-	log.Print("Collecting stats...")
+	phStats.logger.Print("Collecting stats...")
 	ok := true
 	for ok {
 		var ms microseconds
 		if ms, ok = <-phStats.queue; ok {
-			log.Printf("Elapsed time: %dms", ms)
+			phStats.logger.Printf("Elapsed time: %dms", ms)
 
 			// block reads while appending/resizing/reallocating
 			phStats.lock.Lock()
@@ -73,7 +75,7 @@ func (phStats *passwordHasherStats) accumulateStats() {
 			phStats.lock.Unlock()
 		}
 	}
-	log.Print("Done collecting stats")
+	phStats.logger.Print("Done collecting stats")
 }
 
 // startAccumulating begins to accumulate timings.

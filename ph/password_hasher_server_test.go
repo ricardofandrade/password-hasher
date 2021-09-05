@@ -304,12 +304,12 @@ func Test_NewPasswordHasherServerHandler(t *testing.T) {
 
 func Test_Run(t *testing.T) {
 	buf := &bytes.Buffer{}
-	log.SetOutput(buf)
-	log.SetFlags(0)
+	logger := log.New(buf, "", 0)
 
-	// server := NewPasswordHasherServer()
-	// go server.Run()
-	// server.shutdown()
+	server := NewPasswordHasherServer()
+	server.logger = logger
+	go server.Run()
+	server.shutdown()
 }
 
 type MockHasher struct {

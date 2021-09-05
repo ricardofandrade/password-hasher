@@ -23,22 +23,28 @@ type passwordHashStore struct {
 	hashes  map[int64]string
 	lock    sync.RWMutex
 	pending sync.WaitGroup
+	logger  *log.Logger
+	delay   time.Duration
 }
 
 // newPasswordHashStore creates a new store.
-func newPasswordHashStore() *passwordHashStore {
+func newPasswordHashStore(logger *log.Logger, delay time.Duration) *passwordHashStore {
 	return &passwordHashStore{
 		hashes: make(map[int64]string),
+		logger: logger,
+		delay:  delay,
 	}
 }
 
 // delayStore actually stores the password hash tied to its id after a 5-second delay.
 func (store *passwordHashStore) delayStore(hashed string, id int64) {
-	log.Printf("Storing for %d...", id)
+	store.logger.Printf("Storing for %d...", id)
 
 	// mark storage as pending and impose delay
 	store.pending.Add(1)
-	time.Sleep(hashDelay)
+	log.Printf("Waiting %d", store.delay)
+	time.Sleep(store.delay)
+	log.Print("done")
 
 	// block for concurrent writes
 	defer store.lock.Unlock()
@@ -47,7 +53,7 @@ func (store *passwordHashStore) delayStore(hashed string, id int64) {
 
 	// mark storage as completed
 	store.pending.Done()
-	log.Printf("%d stored", id)
+	store.logger.Printf("%d stored", id)
 }
 
 // storePassword imposes a 5-second delay, making the given password hash available by its id after that.
@@ -59,7 +65,7 @@ func (store *passwordHashStore) storePassword(hashed string, id int64) {
 
 // retrievePassword will attempt to find a stored password hash, returning empty if not found.
 func (store *passwordHashStore) retrievePassword(id int64) string {
-	log.Printf("Getting for %d", id)
+	store.logger.Printf("Getting for %d", id)
 
 	// blocks if storage is being writen to, but fast(er) for concurrent reads
 	defer store.lock.RUnlock()
@@ -67,12 +73,12 @@ func (store *passwordHashStore) retrievePassword(id int64) string {
 	if password, ok := store.hashes[id]; ok {
 		return password
 	}
-	log.Printf("No password hash for %d", id)
+	store.logger.Printf("No password hash for %d", id)
 	return ""
 }
 
 // waitPendingStores should be called from a consumer of this store to ensure no pending writes exist.
 func (store *passwordHashStore) waitPendingStores() {
 	store.pending.Wait()
-	log.Print("No more pending stores")
+	store.logger.Print("No more pending stores")
 }

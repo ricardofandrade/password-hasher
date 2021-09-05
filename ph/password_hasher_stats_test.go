@@ -8,7 +8,7 @@ import (
 )
 
 func Test_newPasswordHasherStats(t *testing.T) {
-	stats := newPasswordHasherStats()
+	stats := newPasswordHasherStats(nil)
 	if stats.queue == nil {
 		t.Error("Queue expected to not be nil")
 	}
@@ -31,7 +31,7 @@ func Test_newPasswordHasherStats(t *testing.T) {
 }
 
 func Test_generateStatsIsEmpty(t *testing.T) {
-	stats := newPasswordHasherStats()
+	stats := newPasswordHasherStats(nil)
 	total, avg := stats.generateStats()
 	if total != 0 {
 		t.Errorf("Unexpect values for blank stats: %d total", total)
@@ -48,10 +48,7 @@ func forceGoroutineScheduler() {
 
 func Test_accumulateStatsLogs(t *testing.T) {
 	buf := &bytes.Buffer{}
-	log.SetOutput(buf)
-	log.SetFlags(0)
-
-	stats := newPasswordHasherStats()
+	stats := newPasswordHasherStats(log.New(buf, "", 0))
 	stats.startAccumulating()
 
 	forceGoroutineScheduler()
@@ -69,10 +66,7 @@ func Test_accumulateStatsLogs(t *testing.T) {
 
 func Test_accumulateTiming(t *testing.T) {
 	buf := &bytes.Buffer{}
-	log.SetOutput(buf)
-	log.SetFlags(0)
-
-	stats := newPasswordHasherStats()
+	stats := newPasswordHasherStats(log.New(buf, "", 0))
 	stats.startAccumulating()
 	forceGoroutineScheduler() // for logging
 	buf.Reset()
@@ -91,7 +85,10 @@ func Test_accumulateTiming(t *testing.T) {
 }
 
 func Test_generateStats(t *testing.T) {
-	stats := newPasswordHasherStats()
+	buf := &bytes.Buffer{}
+	logger := log.New(buf, "", 0)
+
+	stats := newPasswordHasherStats(logger)
 	stats.startAccumulating()
 
 	stats.accumulateTiming(time.Microsecond * 3)

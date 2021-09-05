@@ -8,7 +8,7 @@ import (
 )
 
 func Test_newPasswordHashStore(t *testing.T) {
-	store := newPasswordHashStore()
+	store := newPasswordHashStore(nil, 0)
 	if store.hashes == nil {
 		t.Error("Hashes expected to not be nil")
 	}
@@ -16,10 +16,7 @@ func Test_newPasswordHashStore(t *testing.T) {
 
 func Test_retrievePasswordEmpty(t *testing.T) {
 	buf := &bytes.Buffer{}
-	log.SetOutput(buf)
-	log.SetFlags(0)
-
-	store := newPasswordHashStore()
+	store := newPasswordHashStore(log.New(buf, "", 0), 0)
 	if store.retrievePassword(0) != "" {
 		t.Error("Expected an empty store to return no hashes")
 	}
@@ -29,14 +26,9 @@ func Test_retrievePasswordEmpty(t *testing.T) {
 }
 
 func Test_delayStore(t *testing.T) {
-	buf := &bytes.Buffer{}
-	log.SetOutput(buf)
-	log.SetFlags(0)
-
 	// test with no delay
-	hashDelay = 0
-
-	store := newPasswordHashStore()
+	buf := &bytes.Buffer{}
+	store := newPasswordHashStore(log.New(buf, "", 0), 0)
 	store.delayStore("test", 0)
 
 	if len(store.hashes) != 1 {
@@ -56,14 +48,9 @@ func Test_delayStore(t *testing.T) {
 }
 
 func Test_retrievePassword(t *testing.T) {
-	buf := &bytes.Buffer{}
-	log.SetOutput(buf)
-	log.SetFlags(0)
-
 	// test with no delay
-	hashDelay = 0
-
-	store := newPasswordHashStore()
+	buf := &bytes.Buffer{}
+	store := newPasswordHashStore(log.New(buf, "", 0), 0)
 	store.delayStore("test", 0)
 	buf.Reset()
 
@@ -77,19 +64,13 @@ func Test_retrievePassword(t *testing.T) {
 }
 
 func Test_storePassword(t *testing.T) {
-	buf := &bytes.Buffer{}
-	log.SetOutput(buf)
-	log.SetFlags(0)
-
 	// test with small delay
-	hashDelay = time.Second / 100
+	delay := time.Second / 100
 
-	store := newPasswordHashStore()
+	buf := &bytes.Buffer{}
+	store := newPasswordHashStore(log.New(buf, "", 0), delay)
 	store.storePassword("test", 0)
-
-	// To ensure goroutine was called 4/5 of total
-	time.Sleep((hashDelay / 5) * 4)
-
+	forceGoroutineScheduler()
 	if store.retrievePassword(0) != "" {
 		t.Error("Expected to have no hashes before the delay")
 	}

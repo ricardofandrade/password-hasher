@@ -10,7 +10,10 @@ import (
 )
 
 func Test_statsToJson(t *testing.T) {
-	json, ok := statsToJson(10, 33)
+	buf := &bytes.Buffer{}
+	logger := log.New(buf, "", 0)
+
+	json, ok := statsToJson(logger, 10, 33)
 	if !ok {
 		t.Error("Expected ok")
 	} else if string(json) != `{"total":10,"average":33}` {
@@ -20,23 +23,24 @@ func Test_statsToJson(t *testing.T) {
 
 func Test_logWriteError(t *testing.T) {
 	buf := &bytes.Buffer{}
-	log.SetOutput(buf)
-	log.SetFlags(0)
+	logger := log.New(buf, "", 0)
 
-	logWriteError(nil)
+	logWriteError(logger, nil)
 	if buf.String() != "" {
 		t.Errorf("Expected no logs, got: %s", buf.String())
 	}
 
-	logWriteError(errors.New("error"))
+	logWriteError(logger, errors.New("error"))
 	if buf.String() != "ERROR: error\n" {
 		t.Errorf("Expected error logs, got: %s", buf.String())
 	}
 }
 
 func Test_methodErrorResponse(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := log.New(buf, "", 0)
 	w := httptest.NewRecorder()
-	methodErrorResponse(w)
+	methodErrorResponse(logger, w)
 
 	if w.Body.String() != "Not Supported" {
 		t.Errorf("Unexpected body, got %s", w.Body.String())
@@ -47,8 +51,10 @@ func Test_methodErrorResponse(t *testing.T) {
 }
 
 func Test_stopErrorResponse(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := log.New(buf, "", 0)
 	w := httptest.NewRecorder()
-	stopErrorResponse(w)
+	stopErrorResponse(logger, w)
 
 	if w.Body.String() != "Shutting Down" {
 		t.Errorf("Unexpected body, got %s", w.Body.String())
