@@ -39,3 +39,5 @@ To (unit) test:
 
 To test (integration):
 `./test-more.sh`
+
+> Note: test script requires a fresh instance. It will kill it at the end too.
