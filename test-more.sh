@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
+export PATH=${PATH}:`go env GOPATH`/bin
+go build && go install
 killall password-hasher
 
-./password-hasher &
+password-hasher &
+pid=$!
 
 stats=$(curl --silent 'http://localhost:8090/stats')
 
@@ -50,3 +53,4 @@ done
 curl --silent "http://localhost:8090/shutdown"
 
 sleep 1
+wait $pid
