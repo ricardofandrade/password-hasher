@@ -25,4 +25,4 @@ jobs:
       run: go test -v ./...
       
     - name: Integration
-      run: ./password-hasher &; ./test-more.sh
+      run: ./test-more.sh
