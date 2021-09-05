@@ -6,6 +6,14 @@ import (
 	"time"
 )
 
+// passwordHasherStater is the minimal interface for storing stats.
+type passwordHasherStater interface {
+	accumulateTiming(elapsed time.Duration)
+	generateStats() (total int64, avg int64)
+	startAccumulating()
+	stopAccumulating()
+}
+
 type microseconds int64
 
 // passwordHasherStats accumulates the stats for the password hashing operations.
@@ -19,7 +27,7 @@ type passwordHasherStats struct {
 }
 
 // newPasswordHasherStats returns a new stats controller.
-func newPasswordHasherStats() *passwordHasherStats {
+func newPasswordHasherStats() passwordHasherStater {
 	return &passwordHasherStats{
 		queue: make(chan microseconds, 1),
 		times: make([]microseconds, 0),

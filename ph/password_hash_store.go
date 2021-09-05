@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+// passwordHashStorer is the minimal interface for storing hashes.
+type passwordHashStorer interface {
+	storePassword(hashed string, id int64)
+	retrievePassword(id int64) string
+	waitPendingStores()
+}
+
 var hashDelay = 5 * time.Second
 
 // passwordHashStore is an in-memory delayed storage of hashed passwords.
@@ -19,7 +26,7 @@ type passwordHashStore struct {
 }
 
 // newPasswordHashStore creates a new store.
-func newPasswordHashStore() *passwordHashStore {
+func newPasswordHashStore() passwordHashStorer {
 	return &passwordHashStore{
 		hashes: make(map[int64]string),
 	}

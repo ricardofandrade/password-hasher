@@ -16,9 +16,9 @@ type PasswordHasherServer struct {
 	http     *http.Server
 	stopping bool
 	done     chan bool
-	pwHasher *passwordHasher
-	phStore  *passwordHashStore
-	phStats  *passwordHasherStats
+	pwHasher passwordHasher
+	phStore  passwordHashStorer
+	phStats  passwordHasherStater
 }
 
 // NewPasswordHasherServer creates a new hasher server ready to use.
@@ -31,7 +31,7 @@ func NewPasswordHasherServer() *PasswordHasherServer {
 		},
 		stopping: false,
 		done:     make(chan bool, 1),
-		pwHasher: newPasswordHasher(),
+		pwHasher: newSHA512PasswordHasher(),
 		phStore:  newPasswordHashStore(),
 		phStats:  newPasswordHasherStats(),
 	}

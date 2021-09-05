@@ -5,7 +5,7 @@ import (
 )
 
 func Test_hashPassword(t *testing.T) {
-	hasher := newPasswordHasher()
+	hasher := newSHA512PasswordHasher()
 	hash, id := hasher.hashPassword("test")
 	if id != 1 {
 		t.Error("Expected the first id to be 1")
