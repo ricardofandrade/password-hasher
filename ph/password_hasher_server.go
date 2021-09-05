@@ -96,9 +96,9 @@ func (server *PasswordHasherServer) hash(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	if err := req.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		_, errW := fmt.Fprintf(w, "Bad Form")
 		logWriteError(errW)
-		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	password := req.FormValue("password")
@@ -128,9 +128,9 @@ func (server *PasswordHasherServer) getHash(w http.ResponseWriter, req *http.Req
 	value := req.URL.Path[len("/hash/"):]
 	id, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		_, errW := fmt.Fprintf(w, "Invalid ID")
 		logWriteError(errW)
-		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	password := server.phStore.retrievePassword(id)
@@ -159,9 +159,9 @@ func (server *PasswordHasherServer) getStats(w http.ResponseWriter, req *http.Re
 		_, errW := w.Write(data)
 		logWriteError(errW)
 	} else {
+		w.WriteHeader(http.StatusInternalServerError)
 		_, errW := fmt.Fprintf(w, "Internal Error")
 		logWriteError(errW)
-		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
 

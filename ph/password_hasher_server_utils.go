@@ -33,14 +33,14 @@ func logWriteError(errW error) {
 
 // methodErrorResponse is a shorthand to return HTTP 405 when using a non-supported HTTP method.
 func methodErrorResponse(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusMethodNotAllowed)
 	_, errW := fmt.Fprintf(w, "Not Supported")
 	logWriteError(errW)
-	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
 // stopErrorResponse is a shorthand to return HTTP 503 if the service is stopping.
 func stopErrorResponse(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusServiceUnavailable)
 	_, errW := fmt.Fprintf(w, "Shutting Down")
 	logWriteError(errW)
-	w.WriteHeader(http.StatusServiceUnavailable)
 }
