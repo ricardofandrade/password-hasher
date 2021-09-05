@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestGenerateStats3(t *testing.T) {
+func TestGenerateStats2(t *testing.T) {
 	stats := newPasswordHasherStats()
 	total, avg := stats.generateStats()
 	if total != 0 || avg != 0 {
