@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+killall password-hasher
+
+./password-hasher &
 
 stats=$(curl --silent 'http://localhost:8090/stats')
 
