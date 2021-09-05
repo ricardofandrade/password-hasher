@@ -32,7 +32,7 @@ To build:
 `go build`
 
 To run:
-`./password-hasher &` (no options)
+`./password-hasher` (no options)
 
 To (unit) test:
 `go test ./...`
@@ -41,3 +41,5 @@ To test (integration):
 `./test-more.sh`
 
 > Note: test script requires a fresh instance. It will kill it at the end too.
+> The integration test uses `bash`, `jq`, `curl`, `killall`, and `go`.
+> These commands are required.
